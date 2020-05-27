@@ -5,12 +5,6 @@ import com.praphull.apps.sudoku.models.Board.TileMap
 case class Board(tiles: TileMap) {
   require(tiles.size == 81, s"Invalid board of size ${tiles.size}: $tiles")
 
-  def isTileFilled(tile: Tile): Boolean = Board.isTileFilled(tile, tiles)
-
-  def withTile(tile: Tile, value: Int): TileMap = Board.withTile(tile, value, tiles)
-
-  def updated(tile: Tile, value: Int): Board = Board.updated(tile, value, tiles)
-
   def print(): Unit = {
     println("_________________")
     (0 until 9).foreach { x =>
@@ -23,102 +17,74 @@ case class Board(tiles: TileMap) {
   }
 
   def isValid: Boolean = Board.isValid(tiles)
-
-  def isSolved: Boolean = Board.isSolved(tiles)
 }
 
 object Board {
   type TileMap = Map[Tile, Option[Int]]
 
-  @inline def isValid(seq: Seq[Int]): Boolean = {
-    !seq.groupBy(identity).exists(_._2.length > 1)
-    //println(s"isValid failed for grouped: $g")
+  /** Given a sequence of values, check if there's any duplicate */
+  @inline def areValuesValid(values: Seq[Int]): Boolean = {
+    values.length == values.distinct.length
+    //!values.groupBy(identity).exists(_._2.length > 1)
   }
 
+  /** Get all tiles in a given grid */
   def tilesInGrid(seq: Int): Seq[Tile] = {
     val (x, y) = (seq / 3, seq % 3)
-    val res = (for (i <- 3 * x until 3 * (x + 1)) yield
+    (for (i <- 3 * x until 3 * (x + 1)) yield
       for (j <- 3 * y until 3 * (y + 1)) yield {
         Tile(i, j)
       }).flatten
-    res
+
   }
 
-  def tilesInRow(row: Int): Seq[Tile] = {
-    val res = (0 until 9).map(col => Tile(row, col))
-    res
-  }
+  /** Get all tiles in a given row */
+  def tilesInRow(row: Int): Seq[Tile] = (0 until 9).map(col => Tile(row, col))
 
+  /** Get all tiles in a given column */
   def tilesInCol(col: Int): Seq[Tile] = (0 until 9).map(row => Tile(row, col))
 
-  def validateGrid(tiles: TileMap, seq: Int): Boolean = {
-    val res = isValid(tilesInGrid(seq).flatMap(tiles))
-    //if (!r) println(s"validateGrid failed for grid# $seq ($x, $y) (${(3 * x)} to ${3 * (x + 1)}) & (${(3 * y)} to ${3 * (y + 1)})")
-    res
-  }
+  /** Validates grid */
+  def validateGrid(seq: Int, tiles: TileMap): Boolean = areValuesValid(tilesInGrid(seq).flatMap(tiles))
 
-  def validateRow(tiles: TileMap, row: Int): Boolean = {
-    val res = isValid(tilesInRow(row).flatMap(tiles))
-    //if (!res) println(s"validateRow failed for row# $row")
-    res
-  }
+  /** Validates row */
+  def validateRow(row: Int, tiles: TileMap): Boolean = areValuesValid(tilesInRow(row).flatMap(tiles))
 
-  def validateColumn(tiles: TileMap, col: Int): Boolean = {
-    val res = isValid(tilesInCol(col).flatMap(tiles))
-    //if (!res) println(s"validateColumn failed for col# $col")
-    res
-  }
+  /** Validates column */
+  def validateColumn(col: Int, tiles: TileMap): Boolean = areValuesValid(tilesInCol(col).flatMap(tiles))
 
+  /** Validates all grids, rows and columns */
   def isValid(tiles: TileMap): Boolean = (0 until 9).forall { i =>
-    val res = validateGrid(tiles, i) && validateRow(tiles, i) && validateColumn(tiles, i)
-    res
+    validateGrid(i, tiles) && validateRow(i, tiles) && validateColumn(i, tiles)
   }
 
-  def isValid(tile: Tile, tiles: TileMap): Boolean = {
-    val res = validateGrid(tiles, tile.gridSequence) && isValid(tiles)
-    res
-  }
+  /** An optimization to first check for the validity of grid in which the tile being updated lies */
+  def isValid(tile: Tile, tiles: TileMap): Boolean = validateGrid(tile.gridSequence, tiles) && isValid(tiles)
 
-  def isSolved(tiles: TileMap): Boolean = {
-    val res = tiles.forall(_._2.isDefined) && isValid(tiles)
-    res
-  }
+  def isSolved(tiles: TileMap): Boolean = tiles.forall(_._2.isDefined) && isValid(tiles)
 
+  /** Construct a board from comma separated sequence of numbers */
   def fromString(s: String): Board = {
-    val cleaned = s.replaceAll("\n", "")
-    val elements = cleaned.foldLeft((false, 0, List.empty[(Tile, Option[Int])])) {
+    val (_, _, elements) = s.replaceAll("\n", "").foldLeft((false, 0, List.empty[(Tile, Option[Int])])) {
       case ((skipComma, index, list), char) =>
         if (char == ',') {
           if (skipComma)
             (false, index, list)
           else
             (false, index + 1, (Tile(index), None) :: list)
-        } else
-          (true, index + 1, (Tile(index), Some(char - '0')) :: list)
-    }._3
+        } else {
+          val value = char - '0'
+          if (value < 1 || value > 9) throw new Exception(s"Invalid tile value: $value")
+          (true, index + 1, (Tile(index), Some(value)) :: list)
+        }
+    }
     Board(elements.toMap)
-    /*Board(s.replaceAll("\n", "").split(",", -1)
-      .zipWithIndex.map { case (c, i) =>
-      (Tile(i), if (c.isEmpty) None else Some(c.toInt))
-    }.toMap)*/
   }
 
   @inline final def isTileFilled(tile: Tile, tiles: TileMap): Boolean = tiles(tile).isDefined
 
-  def validValuesAt(tile: Tile, tiles: TileMap): List[Int] = {
-    /*val diffWith = {
-      val g = tilesInGrid(tile.gridSequence)
-      println(s"grid: ${g.map(x => tiles(x)).mkString(",")}")
-      val r = tilesInRow(tile.x)
-      println(s"row: ${r.map(x => tiles(x)).mkString(",")}")
-      val c = tilesInCol(tile.y)
-      println(s"col: ${c.map(x => tiles(x)).mkString(",")}")
-      val d = (g ++ r ++ c).distinct
-      val f = d.filterNot(_ == tile)
-      val res = f.flatMap(x => tiles(x)).distinct
-      println(s"res: ${res.mkString(",")}")
-      res
-    }*/
+  /** Returns list of possible values at given tile */
+  def possibleValuesAt(tile: Tile, tiles: TileMap): List[Int] = {
     val diffWith = (tilesInGrid(tile.gridSequence) ++ tilesInRow(tile.x) ++ tilesInCol(tile.y)).distinct
       .filterNot(_ == tile)
       .flatMap(x => tiles(x)).distinct
@@ -126,7 +92,5 @@ object Board {
     (1 to 9).diff(diffWith).toList.sorted
   }
 
-  def withTile(tile: Tile, value: Int, tiles: TileMap): TileMap = tiles.updated(tile, Some(value))
-
-  def updated(tile: Tile, value: Int, tiles: TileMap): Board = Board(withTile(tile, value, tiles))
+  def update(tile: Tile, value: Int, tiles: TileMap): TileMap = tiles.updated(tile, Some(value))
 }

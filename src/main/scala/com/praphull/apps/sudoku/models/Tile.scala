@@ -6,14 +6,8 @@ case class Tile(x: Int, y: Int) {
   require(isValid(x, y), s"Invalid tile $x, $y")
 
   def gridSequence: Int = {
-    /*val a = (x/3)*3  //1*3 | 2*3
-    val b = (y/3)  //2       | 2
-    //3,7 => 5
-    //8,8 => 8
-    (x * 9 + y) / 9
-    //println(s"Tile: gridSequence: $m")
-    //m*/
-    (3*(x/3)) + (y / 3)
+    //This is a particularly strange equation, and it is so because of precision loss needed here
+    (3 * (x / 3)) + (y / 3)
   }
 
   def nextTile: Option[Tile] = {

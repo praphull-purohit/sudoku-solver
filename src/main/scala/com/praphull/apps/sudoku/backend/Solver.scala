@@ -3,6 +3,8 @@ package com.praphull.apps.sudoku.backend
 import com.praphull.apps.sudoku.models.Board.TileMap
 import com.praphull.apps.sudoku.models.{Board, Tile}
 
+import scala.util.{Failure, Success, Try}
+
 object Solver {
   val board1: String =
     """,,2,,,1,,,9,
@@ -47,6 +49,7 @@ object Solver {
       |9,,7,1,4,,,6,,
       |,,,,,5,4,,,""".stripMargin
 
+  //Invalid board
   val board5: String =
     """,,8,,4,3,,,,
       |,,,,,,9,7,,
@@ -69,48 +72,42 @@ object Solver {
       |,3,,,2,,4,6,,
       |,,,,,,,,5,""".stripMargin
 
+  val board7: String =
+    """2,,,,,,,7,,
+      |4,,8,3,,6,,,9,
+      |,6,,,,,,8,,
+      |1,,,,6,8,,,,
+      |,,,1,,3,,,,
+      |,,,2,5,,,,1,
+      |,8,,,,,,2,,
+      |3,,,8,,7,9,,4,
+      |,4,,,,,,,6""".stripMargin
+
   def doSolve(tile: Tile, tiles: TileMap): (Boolean, TileMap) = {
-    // def log(s: String): Unit = println(s"[${tile.x}, ${tile.y}] $s")
     //Check whether tile is already filled, if so, just proceed with next tile until board is solved
     if (!Board.isTileFilled(tile, tiles)) {
-      val validValues = Board.validValuesAt(tile, tiles)
-      //log(s"Trying valid values: ${validValues.mkString(",")}")
+      val possibleValues = Board.possibleValuesAt(tile, tiles)
       //Get all valid values for current tile and iterate through them
-      validValues.foldLeft((false, tiles)) { case ((r, currentTiles), value) =>
+      possibleValues.foldLeft((false, tiles)) { case ((isAlreadySolved, currentTiles), possibleValue) =>
         //Whatever value is totally suited, short circuit after that
-        if (r) (r, currentTiles) else {
-          val updated = Board.withTile(tile, value, tiles)
+        if (isAlreadySolved) (isAlreadySolved, currentTiles) else {
+          val updated = Board.update(tile, possibleValue, tiles)
           //Check if current value keeps the board valid
           if (Board.isValid(tile, updated)) {
-            //    log(s"Value $value works")
             //If value suits, proceed to next tile
             tile.nextTile.fold((Board.isValid(updated), updated)) { nextTile =>
               doSolve(nextTile, updated)
             }
           } else {
-            //  log(s"Value $value doesn't work")
             //If value doesn't suit, return false so that next valid value will be tried at this position
             (false, tiles)
-            /*tile.nextTile.fold((false, currentTiles)) { nextTile =>
-              doSolve(nextTile, currentTiles)
-            }*/
           }
         }
       }
-      /*if (gotSolved && Board.isSolved(updatedTiles)) (gotSolved, updatedTiles)
-      else {
-        (false, updatedTiles)
-        //log(s"Proceeding to check next tile. No solution found for current tile")
-        //If board isn't solved, proceed to next tiles (shouldn't happen)
-        //tile.nextTile.fold((false, updatedTiles)) { nextTile =>
-        //doSolve(nextTile, updatedTiles)
-        //}
-      }*/
     } else {
-      //log(s"Tile already filled")
       //If no next tile remains, return
       tile.nextTile.fold((Board.isSolved(tiles), tiles)) { nextTile =>
-        //Other solve next tile with current board
+        //Otherwise solve next tile with current board
         doSolve(nextTile, tiles)
       }
     }
@@ -118,15 +115,18 @@ object Solver {
 
   def solve(board: Board): Unit = {
     board.print()
-    //val test = Board.validValuesAt(Tile(0,4),board.tiles)
-    //println(s"Valid values at 0,4: ${test.mkString(",")} \n-----")
-
-    val (r, res) = doSolve(Tile(0, 0), board.tiles)
-    if (r) {
-      println(s"Solved.")
-      Board(res).print()
+    if (board.isValid) {
+      val start = System.nanoTime
+      val (solved, solution) = doSolve(Tile(0, 0), board.tiles)
+      val elapsed = (System.nanoTime - start) / 1000000
+      if (solved) {
+        println(s"Solved in ${elapsed / 1000} seconds ($elapsed ms)")
+        Board(solution).print()
+      } else {
+        println(s"Could not solve")
+      }
     } else {
-      println(s"Could not solve")
+      println(s"Given board is invalid")
     }
   }
 
@@ -137,10 +137,21 @@ object Solver {
     4 -> board4,
     5 -> board5,
     6 -> board6,
+    7 -> board7,
   )
 
   def main(args: Array[String]): Unit = {
-    val toSolve = if (args.length == 1) args(0).toInt else 1
-    solve(Board.fromString(boards(toSolve)))
+    val boardStringOpt = if (args.length == 1) {
+      if (args(0).forall(_.isDigit)) boards.get(args(0).toInt) else Some(args(0))
+    } else Some(boards(1))
+    boardStringOpt.fold {
+      val bk = boards.keys
+      println(s"Incorrect argument. Either pass a board as comma separated or send a board number between ${bk.min}-${bk.max}")
+    } { boardString =>
+      Try(Board.fromString(boardString)) match {
+        case Failure(exception) => println(s"Failed to create board: ${exception.getMessage}")
+        case Success(board) => solve(board)
+      }
+    }
   }
 }
